@@ -12,10 +12,11 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { runRCV, RoundResult } from '@/lib/rcv'
 import { supabase } from '@/lib/supabase'
+import { normalizeVoterName, voterNameKey } from '@/lib/voter-name'
 import Results from './Results'
 
 type Candidate = { id: string; title: string }
-type Vote = { candidate_id: string; rank: number; voter_name: string }
+type Vote = { candidate_id: string; rank: number; voter_name: string; voter_name_key?: string | null }
 type VoteRow = Vote & { ballot_id: string }
 type Ballot = { id: string; title: string; is_open: boolean }
 
@@ -27,13 +28,20 @@ function SortableBook({ candidate, index }: { candidate: Candidate; index: numbe
     <div
       ref={setNodeRef}
       style={{ ...style, background: 'var(--card-background)', border: '1px solid var(--card-border)' }}
-      className="flex items-center gap-4 rounded-lg p-4 mb-3 w-full max-w-md shadow-sm cursor-grab active:cursor-grabbing"
+      className="flex items-center gap-3 rounded-lg p-4 mb-3 w-full max-w-md shadow-sm touch-manipulation"
       {...attributes}
-      {...listeners}
     >
-      <span className="text-2xl font-bold w-8" style={{ color: 'var(--muted)' }}>{index + 1}</span>
-      <p className="font-semibold">{candidate.title}</p>
-      <span className="ml-auto" style={{ color: 'var(--muted)' }}>⠿</span>
+      <span className="text-2xl font-bold w-8 shrink-0" style={{ color: 'var(--muted)' }}>{index + 1}</span>
+      <p className="font-semibold min-w-0 flex-1 break-words">{candidate.title}</p>
+      <button
+        type="button"
+        className="ml-auto rounded-md px-3 py-2 cursor-grab active:cursor-grabbing shrink-0"
+        style={{ color: 'var(--muted)', border: '1px solid var(--card-border)' }}
+        aria-label={`Drag ${candidate.title}`}
+        {...listeners}
+      >
+        ⠿
+      </button>
     </div>
   )
 }
@@ -43,14 +51,15 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
   candidates: Candidate[]
   existingVotes: Vote[]
 }) {
+  const votedSessionKey = `voted:${ballot.id}`
   const [screen, setScreen] = useState<'name' | 'vote' | 'results'>('name')
   const [voterName, setVoterName] = useState('')
   const [nameError, setNameError] = useState('')
   const [items, setItems] = useState(candidates)
   const [submitting, setSubmitting] = useState(false)
   const [voteError, setVoteError] = useState('')
-  const [rounds, setRounds] = useState<RoundResult[]>([])
-  const [voteCount, setVoteCount] = useState(0)
+  const [rounds, setRounds] = useState<RoundResult[]>(() => runRCV(existingVotes, candidates))
+  const [voteCount, setVoteCount] = useState(() => countVoters(existingVotes))
   const [resultsError, setResultsError] = useState('')
 
   const sensors = useSensors(
@@ -60,7 +69,7 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
 
   const updateResults = useCallback((votes: Vote[]) => {
     setRounds(runRCV(votes, candidates))
-    setVoteCount(new Set(votes.map(vote => vote.voter_name.toLowerCase())).size)
+    setVoteCount(countVoters(votes))
   }, [candidates])
 
   const refreshResults = useCallback(async () => {
@@ -78,6 +87,32 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
     setResultsError('')
     updateResults(data ?? [])
   }, [ballot.id, updateResults])
+
+  useEffect(() => {
+    if (!ballot.is_open) {
+      const closeTimer = window.setTimeout(() => {
+        updateResults(existingVotes)
+        setScreen('results')
+      }, 0)
+
+      return () => {
+        window.clearTimeout(closeTimer)
+      }
+    }
+
+    const restoreTimer = window.setTimeout(() => {
+      const savedVoterName = window.sessionStorage.getItem(votedSessionKey)
+      if (!savedVoterName) return
+
+      setVoterName(savedVoterName)
+      updateResults(existingVotes)
+      setScreen('results')
+    }, 0)
+
+    return () => {
+      window.clearTimeout(restoreTimer)
+    }
+  }, [ballot.is_open, existingVotes, updateResults, votedSessionKey])
 
   useEffect(() => {
     if (screen !== 'results') return
@@ -120,13 +155,14 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
   }
 
   function handleNameSubmit() {
-    const trimmed = voterName.trim()
-    if (!trimmed) return setNameError('Please enter your name')
+    const displayName = normalizeVoterName(voterName)
+    if (!displayName) return setNameError('Please enter your name')
 
-    // Check for duplicate name
-    const alreadyVoted = existingVotes.some(v => v.voter_name.toLowerCase() === trimmed.toLowerCase())
+    const nameKey = voterNameKey(displayName)
+    const alreadyVoted = existingVotes.some(v => (v.voter_name_key ?? voterNameKey(v.voter_name)) === nameKey)
     if (alreadyVoted) return setNameError('This name has already voted')
 
+    setVoterName(displayName)
     setNameError('')
     setScreen('vote')
   }
@@ -139,13 +175,13 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
       ballot_id: ballot.id,
       candidate_id: item.id,
       rank: index + 1,
-      voter_name: voterName.trim()
+      voter_name: normalizeVoterName(voterName),
     }))
 
     const res = await fetch('/api/vote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rankings, ballotId: ballot.id, voterName: voterName.trim() })
+      body: JSON.stringify({ rankings, ballotId: ballot.id, voterName: normalizeVoterName(voterName) })
     })
 
     if (!res.ok) {
@@ -157,12 +193,9 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
 
     const allVotes = [...existingVotes, ...rankings]
     updateResults(allVotes)
+    window.sessionStorage.setItem(votedSessionKey, normalizeVoterName(voterName))
     setScreen('results')
     setSubmitting(false)
-  }
-
-  if (!ballot.is_open) {
-    return <p style={{ color: 'var(--muted)' }}>This ballot is closed.</p>
   }
 
   // Name entry screen
@@ -200,6 +233,7 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
         voterName={voterName}
         voteCount={voteCount}
         resultsError={resultsError}
+        isClosed={!ballot.is_open}
       />
     )
   }
@@ -226,4 +260,8 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
       </button>
     </div>
   )
+}
+
+function countVoters(votes: Vote[]) {
+  return new Set(votes.map(vote => vote.voter_name_key ?? voterNameKey(vote.voter_name))).size
 }

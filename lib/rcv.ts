@@ -3,15 +3,24 @@ export type RoundResult = {
   counts: Record<string, number>
   eliminated: string | null
   winner: string | null
+  tieBreak: {
+    tied: string[]
+    selected: string
+  } | null
 }
 
 export function runRCV(
   ballots: { candidate_id: string; rank: number; voter_name: string }[],
   candidates: { id: string; title: string }[]
 ): RoundResult[] {
+  if (ballots.length === 0) {
+    return []
+  }
+
   const rounds: RoundResult[] = []
   const remaining = new Set(candidates.map(c => c.id))
   const nameOf = Object.fromEntries(candidates.map(c => [c.id, c.title]))
+  const candidateOrder = Object.fromEntries(candidates.map((c, index) => [c.id, index]))
 
   // Group votes by voter
   const voters = new Map<string, string[]>()
@@ -52,21 +61,32 @@ export function runRCV(
         round: roundNum,
         counts: Object.fromEntries(Object.entries(counts).map(([id, n]) => [nameOf[id], n])),
         eliminated: null,
-        winner: nameOf[winner[0]]
+        winner: nameOf[winner[0]],
+        tieBreak: null
       })
       break
     }
 
     // Eliminate candidate with fewest votes
     const minVotes = Math.min(...Object.values(counts))
-    const eliminated = Object.entries(counts).find(([, count]) => count === minVotes)![0]
+    const tiedForElimination = Object.entries(counts)
+      .filter(([, count]) => count === minVotes)
+      .map(([id]) => id)
+      .sort((a, b) => candidateOrder[a] - candidateOrder[b])
+    const eliminated = pickTieBreakCandidate(tiedForElimination, roundNum)
     remaining.delete(eliminated)
 
     rounds.push({
       round: roundNum,
       counts: Object.fromEntries(Object.entries(counts).map(([id, n]) => [nameOf[id], n])),
       eliminated: nameOf[eliminated],
-      winner: null
+      winner: null,
+      tieBreak: tiedForElimination.length > 1
+        ? {
+            tied: tiedForElimination.map(id => nameOf[id]),
+            selected: nameOf[eliminated]
+          }
+        : null
     })
 
     roundNum++
@@ -79,4 +99,17 @@ export function runRCV(
   }
 
   return rounds
+}
+
+function pickTieBreakCandidate(candidateIds: string[], round: number) {
+  if (candidateIds.length === 1) return candidateIds[0]
+
+  const seed = `${round}:${candidateIds.join(':')}`
+  let hash = 0
+
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+  }
+
+  return candidateIds[hash % candidateIds.length]
 }

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -45,11 +46,17 @@ export default function CreatePage() {
       return
     }
 
-    router.push(`/vote/${data.shareCode}`)
+    router.push(`/admin/ballot/${data.shareCode}`)
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center p-8">
+    <main className="min-h-screen flex flex-col items-center p-4 sm:p-8">
+      <div className="w-full max-w-md">
+        <Link href="/admin" className="inline-block text-sm mb-6" style={{ color: 'var(--muted)' }}>
+          Back to admin
+        </Link>
+      </div>
+
       <h1 className="text-3xl font-bold mb-2">Create Ballot</h1>
       <p className="mb-8" style={{ color: 'var(--muted)' }}>Set up a new vote for your book club.</p>
 

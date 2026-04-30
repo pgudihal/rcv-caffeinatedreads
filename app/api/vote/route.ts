@@ -1,10 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { normalizeVoterName, voterNameKey } from '@/lib/voter-name'
 import { NextRequest, NextResponse } from 'next/server'
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
 
 type RankingInput = {
   candidate_id?: unknown
@@ -13,13 +9,14 @@ type RankingInput = {
 
 export async function POST(request: NextRequest) {
   const { rankings, ballotId, voterName } = await request.json()
-  const trimmedVoterName = typeof voterName === 'string' ? voterName.trim() : ''
+  const displayVoterName = typeof voterName === 'string' ? normalizeVoterName(voterName) : ''
+  const normalizedVoterName = voterNameKey(displayVoterName)
 
   if (!ballotId || typeof ballotId !== 'string') {
     return NextResponse.json({ error: 'Invalid ballot' }, { status: 400 })
   }
 
-  if (!trimmedVoterName) {
+  if (!displayVoterName) {
     return NextResponse.json({ error: 'Voter name is required' }, { status: 400 })
   }
 
@@ -91,7 +88,7 @@ export async function POST(request: NextRequest) {
     .from('votes')
     .select('id')
     .eq('ballot_id', ballotId)
-    .ilike('voter_name', trimmedVoterName)
+    .eq('voter_name_key', normalizedVoterName)
     .limit(1)
 
   if (existingError) {
@@ -107,7 +104,7 @@ export async function POST(request: NextRequest) {
     ballot_id: ballotId,
     candidate_id: ranking.candidate_id as string,
     rank: ranking.rank as number,
-    voter_name: trimmedVoterName,
+    voter_name: displayVoterName,
   }))
 
   const { error } = await supabaseAdmin

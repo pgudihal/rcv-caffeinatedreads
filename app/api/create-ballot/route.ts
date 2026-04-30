@@ -1,12 +1,7 @@
 import { ADMIN_COOKIE, verifyAdminSession } from '@/lib/admin-session'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
 
 export async function POST(request: NextRequest) {
   const cookieStore = await cookies()
