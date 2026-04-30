@@ -76,7 +76,6 @@ function SortableBook({
         >
           ↓
         </button>
-        <span className="rounded-md px-3 py-2" style={{ color: 'var(--muted)', border: '1px solid var(--card-border)' }}>⠿</span>
       </div>
     </div>
   )
