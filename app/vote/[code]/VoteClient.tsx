@@ -21,7 +21,21 @@ type Vote = { candidate_id: string; rank: number; voter_name: string; voter_name
 type VoteRow = Vote & { ballot_id: string }
 type Ballot = { id: string; title: string; share_code: string; is_open: boolean }
 
-function SortableBook({ candidate, index }: { candidate: Candidate; index: number }) {
+function SortableBook({
+  candidate,
+  index,
+  isFirst,
+  isLast,
+  onMoveUp,
+  onMoveDown,
+}: {
+  candidate: Candidate
+  index: number
+  isFirst: boolean
+  isLast: boolean
+  onMoveUp: () => void
+  onMoveDown: () => void
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: candidate.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
@@ -29,20 +43,41 @@ function SortableBook({ candidate, index }: { candidate: Candidate; index: numbe
     <div
       ref={setNodeRef}
       style={{ ...style, background: 'var(--card-background)', border: '1px solid var(--card-border)' }}
-      className="flex items-center gap-3 rounded-lg p-4 mb-3 w-full max-w-md shadow-sm touch-manipulation"
+      className="flex items-center gap-3 rounded-lg p-4 mb-3 w-full max-w-md shadow-sm cursor-grab active:cursor-grabbing touch-manipulation"
       {...attributes}
+      {...listeners}
     >
       <span className="text-2xl font-bold w-8 shrink-0" style={{ color: 'var(--muted)' }}>{index + 1}</span>
       <p className="font-semibold min-w-0 flex-1 break-words">{candidate.title}</p>
-      <button
-        type="button"
-        className="ml-auto rounded-md px-3 py-2 cursor-grab active:cursor-grabbing shrink-0"
-        style={{ color: 'var(--muted)', border: '1px solid var(--card-border)' }}
-        aria-label={`Drag ${candidate.title}`}
-        {...listeners}
-      >
-        ⠿
-      </button>
+      <div className="ml-auto flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onMoveUp()
+          }}
+          disabled={isFirst}
+          className="h-9 w-9 rounded-md text-sm font-semibold disabled:opacity-30"
+          style={{ border: '1px solid var(--card-border)', color: 'var(--muted)' }}
+          aria-label={`Move ${candidate.title} up`}
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onMoveDown()
+          }}
+          disabled={isLast}
+          className="h-9 w-9 rounded-md text-sm font-semibold disabled:opacity-30"
+          style={{ border: '1px solid var(--card-border)', color: 'var(--muted)' }}
+          aria-label={`Move ${candidate.title} down`}
+        >
+          ↓
+        </button>
+        <span className="rounded-md px-3 py-2" style={{ color: 'var(--muted)', border: '1px solid var(--card-border)' }}>⠿</span>
+      </div>
     </div>
   )
 }
@@ -64,7 +99,12 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
   const [resultsError, setResultsError] = useState('')
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
@@ -153,6 +193,14 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
         return arrayMove(items, oldIndex, newIndex)
       })
     }
+  }
+
+  function moveItem(index: number, direction: -1 | 1) {
+    setItems(items => {
+      const newIndex = index + direction
+      if (newIndex < 0 || newIndex >= items.length) return items
+      return arrayMove(items, index, newIndex)
+    })
   }
 
   function handleNameSubmit() {
@@ -253,7 +301,15 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
           {items.map((candidate, index) => (
-            <SortableBook key={candidate.id} candidate={candidate} index={index} />
+            <SortableBook
+              key={candidate.id}
+              candidate={candidate}
+              index={index}
+              isFirst={index === 0}
+              isLast={index === items.length - 1}
+              onMoveUp={() => moveItem(index, -1)}
+              onMoveDown={() => moveItem(index, 1)}
+            />
           ))}
         </SortableContext>
       </DndContext>
