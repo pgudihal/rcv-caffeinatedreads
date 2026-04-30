@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   DndContext, closestCenter, KeyboardSensor,
-  PointerSensor, useSensor, useSensors, DragEndEvent
+  MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent
 } from '@dnd-kit/core'
 import {
   arrayMove, SortableContext, sortableKeyboardCoordinates,
@@ -52,6 +52,7 @@ function SortableBook({
       <div className="ml-auto flex items-center gap-1 shrink-0">
         <button
           type="button"
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()
             onMoveUp()
@@ -65,6 +66,7 @@ function SortableBook({
         </button>
         <button
           type="button"
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()
             onMoveDown()
@@ -98,7 +100,12 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
   const [resultsError, setResultsError] = useState('')
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 4,
+      },
+    }),
+    useSensor(TouchSensor, {
       activationConstraint: {
         delay: 150,
         tolerance: 8,
