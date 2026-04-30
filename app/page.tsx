@@ -58,7 +58,17 @@ async function handlePasswordSubmit() {
         Manage Ballots
       </button>
 
-      {ballots.length > 0 && (
+      {ballots.length === 0 ? (
+        <div
+          className="w-full max-w-md rounded-lg p-6 text-center"
+          style={{ background: 'var(--card-background)', border: '1px solid var(--card-border)' }}
+        >
+          <h2 className="font-semibold mb-2">No ballots yet</h2>
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            Check back later, or use admin access to create the first ballot.
+          </p>
+        </div>
+      ) : (
         <div className="w-full max-w-md">
           <h2 className="text-xl font-semibold mb-4">Active Ballots</h2>
           {ballots.map(ballot => (

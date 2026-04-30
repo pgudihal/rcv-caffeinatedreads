@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
   DndContext, closestCenter, KeyboardSensor,
   PointerSensor, useSensor, useSensors, DragEndEvent
@@ -18,7 +19,7 @@ import Results from './Results'
 type Candidate = { id: string; title: string }
 type Vote = { candidate_id: string; rank: number; voter_name: string; voter_name_key?: string | null }
 type VoteRow = Vote & { ballot_id: string }
-type Ballot = { id: string; title: string; is_open: boolean }
+type Ballot = { id: string; title: string; share_code: string; is_open: boolean }
 
 function SortableBook({ candidate, index }: { candidate: Candidate; index: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: candidate.id })
@@ -221,6 +222,13 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
         >
           Continue
         </button>
+        <Link
+          href={`/results/${ballot.share_code}`}
+          className="block text-center text-sm mt-4"
+          style={{ color: 'var(--muted)' }}
+        >
+          View results without voting
+        </Link>
       </div>
     )
   }
