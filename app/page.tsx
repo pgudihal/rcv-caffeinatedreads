@@ -47,8 +47,8 @@ async function handlePasswordSubmit() {
 
   return (
     <main className="min-h-screen flex flex-col items-center p-4 sm:p-8">
-      <h1 className="text-4xl font-bold mb-2">📚 Book Club Voting</h1>
-      <p className="mb-8" style={{ color: 'var(--muted)' }}>Ranked choice voting for your book club.</p>
+      <h1 className="text-4xl font-bold mb-2">📚 Caffeinated Reads </h1>
+      <p className="mb-8" style={{ color: 'var(--muted)' }}>Ranked choice voting for Book Club.</p>
 
       <button
         onClick={() => setShowModal(true)}
