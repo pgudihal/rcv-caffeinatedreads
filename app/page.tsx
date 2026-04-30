@@ -70,7 +70,7 @@ async function handlePasswordSubmit() {
         </div>
       ) : (
         <div className="w-full max-w-md">
-          <h2 className="text-xl font-semibold mb-4">Active Ballots</h2>
+          <h2 className="text-xl font-semibold mb-4">Current Ballots</h2>
           {ballots.map(ballot => (
             <Link
               key={ballot.id}
