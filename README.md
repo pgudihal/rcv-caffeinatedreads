@@ -55,6 +55,13 @@ supabase/migrations/20260430002000_remove_public_vote_reads.sql
 
 The app intentionally keeps raw vote rows private. Public pages get aggregate RCV rounds and voter counts from Next.js API routes using `SUPABASE_SECRET_KEY`; admin-only pages use protected API routes for raw vote management.
 
+Basic in-memory rate limiting is applied to public mutation routes:
+
+- Admin login: 8 attempts per IP every 10 minutes
+- Vote submission: 30 attempts per IP per minute, plus 5 attempts per ballot/name every 10 minutes
+
+This is useful for light abuse prevention, but serverless instances do not share memory. Use a shared store such as Upstash Redis if you need stronger production-grade rate limiting.
+
 ## Local Development
 
 Install dependencies:

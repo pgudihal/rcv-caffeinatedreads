@@ -1,3 +1,4 @@
+import { checkRateLimit, getClientIp, rateLimitResponse } from '@/lib/rate-limit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeVoterName, voterNameKey } from '@/lib/voter-name'
 import { NextRequest, NextResponse } from 'next/server'
@@ -8,6 +9,17 @@ type RankingInput = {
 }
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request)
+  const ipRateLimit = checkRateLimit({
+    key: `vote-ip:${ip}`,
+    limit: 30,
+    windowMs: 60 * 1000,
+  })
+
+  if (!ipRateLimit.allowed) {
+    return rateLimitResponse(ipRateLimit.retryAfter)
+  }
+
   const { rankings, ballotId, voterName } = await request.json()
   const displayVoterName = typeof voterName === 'string' ? normalizeVoterName(voterName) : ''
   const normalizedVoterName = voterNameKey(displayVoterName)
@@ -18,6 +30,16 @@ export async function POST(request: NextRequest) {
 
   if (!displayVoterName) {
     return NextResponse.json({ error: 'Voter name is required' }, { status: 400 })
+  }
+
+  const voterRateLimit = checkRateLimit({
+    key: `vote-voter:${ballotId}:${normalizedVoterName}`,
+    limit: 5,
+    windowMs: 10 * 60 * 1000,
+  })
+
+  if (!voterRateLimit.allowed) {
+    return rateLimitResponse(voterRateLimit.retryAfter)
   }
 
   if (!rankings || !Array.isArray(rankings) || rankings.length === 0) {
