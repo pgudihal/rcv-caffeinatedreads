@@ -11,15 +11,14 @@ import {
   verticalListSortingStrategy, useSortable
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { runRCV, RoundResult } from '@/lib/rcv'
-import { supabase } from '@/lib/supabase'
-import { normalizeVoterName, voterNameKey } from '@/lib/voter-name'
+import { RoundResult } from '@/lib/rcv'
+import { normalizeVoterName } from '@/lib/voter-name'
 import Results from './Results'
 
 type Candidate = { id: string; title: string }
-type Vote = { candidate_id: string; rank: number; voter_name: string; voter_name_key?: string | null }
-type VoteRow = Vote & { ballot_id: string }
+type VoteRow = { ballot_id: string; candidate_id: string; rank: number; voter_name: string }
 type Ballot = { id: string; title: string; share_code: string; is_open: boolean }
+type PublicResultsResponse = { ballot: Ballot; rounds: RoundResult[]; voteCount: number }
 
 function SortableBook({
   candidate,
@@ -83,10 +82,11 @@ function SortableBook({
   )
 }
 
-export default function VoteClient({ ballot, candidates, existingVotes }: {
+export default function VoteClient({ ballot, candidates, initialRounds, initialVoteCount }: {
   ballot: Ballot
   candidates: Candidate[]
-  existingVotes: Vote[]
+  initialRounds: RoundResult[]
+  initialVoteCount: number
 }) {
   const votedSessionKey = `voted:${ballot.id}`
   const [screen, setScreen] = useState<'name' | 'vote' | 'results'>('name')
@@ -95,8 +95,9 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
   const [items, setItems] = useState(candidates)
   const [submitting, setSubmitting] = useState(false)
   const [voteError, setVoteError] = useState('')
-  const [rounds, setRounds] = useState<RoundResult[]>(() => runRCV(existingVotes, candidates))
-  const [voteCount, setVoteCount] = useState(() => countVoters(existingVotes))
+  const [rounds, setRounds] = useState<RoundResult[]>(initialRounds)
+  const [voteCount, setVoteCount] = useState(initialVoteCount)
+  const [isClosed, setIsClosed] = useState(!ballot.is_open)
   const [resultsError, setResultsError] = useState('')
 
   const sensors = useSensors(
@@ -114,31 +115,24 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  const updateResults = useCallback((votes: Vote[]) => {
-    setRounds(runRCV(votes, candidates))
-    setVoteCount(countVoters(votes))
-  }, [candidates])
-
   const refreshResults = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('votes')
-      .select('candidate_id, rank, voter_name')
-      .eq('ballot_id', ballot.id)
+    const res = await fetch(`/api/results/${ballot.share_code}`, { cache: 'no-store' })
 
-    if (error) {
-      console.error('Results refresh error:', error)
+    if (!res.ok) {
       setResultsError('Could not refresh live results.')
       return
     }
 
+    const data = await res.json() as PublicResultsResponse
     setResultsError('')
-    updateResults(data ?? [])
-  }, [ballot.id, updateResults])
+    setRounds(data.rounds)
+    setVoteCount(data.voteCount)
+    setIsClosed(!data.ballot.is_open)
+  }, [ballot.share_code])
 
   useEffect(() => {
     if (!ballot.is_open) {
       const closeTimer = window.setTimeout(() => {
-        updateResults(existingVotes)
         setScreen('results')
       }, 0)
 
@@ -152,14 +146,13 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
       if (!savedVoterName) return
 
       setVoterName(savedVoterName)
-      updateResults(existingVotes)
       setScreen('results')
     }, 0)
 
     return () => {
       window.clearTimeout(restoreTimer)
     }
-  }, [ballot.is_open, existingVotes, updateResults, votedSessionKey])
+  }, [ballot.is_open, votedSessionKey])
 
   useEffect(() => {
     if (screen !== 'results') return
@@ -167,28 +160,15 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
     const refreshTimer = window.setTimeout(() => {
       void refreshResults()
     }, 0)
-
-    const channel = supabase
-      .channel(`votes:${ballot.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'votes',
-          filter: `ballot_id=eq.${ballot.id}`,
-        },
-        () => {
-          void refreshResults()
-        }
-      )
-      .subscribe()
+    const refreshInterval = window.setInterval(() => {
+      void refreshResults()
+    }, 3000)
 
     return () => {
       window.clearTimeout(refreshTimer)
-      void supabase.removeChannel(channel)
+      window.clearInterval(refreshInterval)
     }
-  }, [ballot.id, refreshResults, screen])
+  }, [refreshResults, screen])
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -212,10 +192,6 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
   function handleNameSubmit() {
     const displayName = normalizeVoterName(voterName)
     if (!displayName) return setNameError('Please enter your name')
-
-    const nameKey = voterNameKey(displayName)
-    const alreadyVoted = existingVotes.some(v => (v.voter_name_key ?? voterNameKey(v.voter_name)) === nameKey)
-    if (alreadyVoted) return setNameError('This name has already voted')
 
     setVoterName(displayName)
     setNameError('')
@@ -246,9 +222,8 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
       return
     }
 
-    const allVotes = [...existingVotes, ...rankings]
-    updateResults(allVotes)
     window.sessionStorage.setItem(votedSessionKey, normalizeVoterName(voterName))
+    await refreshResults()
     setScreen('results')
     setSubmitting(false)
   }
@@ -295,7 +270,7 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
         voterName={voterName}
         voteCount={voteCount}
         resultsError={resultsError}
-        isClosed={!ballot.is_open}
+        isClosed={isClosed}
       />
     )
   }
@@ -330,8 +305,4 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
       </button>
     </div>
   )
-}
-
-function countVoters(votes: Vote[]) {
-  return new Set(votes.map(vote => vote.voter_name_key ?? voterNameKey(vote.voter_name))).size
 }

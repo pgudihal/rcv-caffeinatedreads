@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { runRCV, RoundResult } from '@/lib/rcv'
-import { supabase } from '@/lib/supabase'
 import { voterNameKey } from '@/lib/voter-name'
 import Results from '@/app/vote/[code]/Results'
 
@@ -65,47 +64,32 @@ export default function AdminBallotClient({
   }, [candidates])
 
   const refreshResults = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('votes')
-      .select('candidate_id, rank, voter_name, voter_name_key')
-      .eq('ballot_id', ballot.id)
+    const res = await fetch(`/api/admin/ballot/${ballot.share_code}`, { cache: 'no-store' })
 
-    if (error) {
-      console.error('Admin results refresh error:', error)
+    if (!res.ok) {
       setResultsError('Could not refresh live results.')
       return
     }
 
+    const data = await res.json() as { isOpen: boolean; votes: Vote[] }
     setResultsError('')
-    updateResults(data ?? [])
-  }, [ballot.id, updateResults])
+    setIsOpen(data.isOpen)
+    updateResults(data.votes)
+  }, [ballot.share_code, updateResults])
 
   useEffect(() => {
     const refreshTimer = window.setTimeout(() => {
       void refreshResults()
     }, 0)
-
-    const channel = supabase
-      .channel(`admin-votes:${ballot.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'votes',
-          filter: `ballot_id=eq.${ballot.id}`,
-        },
-        () => {
-          void refreshResults()
-        }
-      )
-      .subscribe()
+    const refreshInterval = window.setInterval(() => {
+      void refreshResults()
+    }, 3000)
 
     return () => {
       window.clearTimeout(refreshTimer)
-      void supabase.removeChannel(channel)
+      window.clearInterval(refreshInterval)
     }
-  }, [ballot.id, refreshResults])
+  }, [refreshResults])
 
   async function copyVoteLink() {
     await navigator.clipboard.writeText(voteUrl)

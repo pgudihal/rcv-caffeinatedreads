@@ -1,33 +1,20 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { getPublicResultsByCode } from '@/lib/public-results'
 import LiveResults from './LiveResults'
 
 export default async function ResultsPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
+  const result = await getPublicResultsByCode(code)
 
-  const { data: ballot } = await supabase
-    .from('ballots')
-    .select('id, title, share_code, is_open')
-    .eq('share_code', code)
-    .single()
-
-  if (!ballot) {
+  if (!result.data) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4 sm:p-8">
-        <p>Ballot not found.</p>
+        <p>{result.error}</p>
       </main>
     )
   }
 
-  const { data: candidates } = await supabase
-    .from('candidates')
-    .select('id, title')
-    .eq('ballot_id', ballot.id)
-
-  const { data: votes } = await supabase
-    .from('votes')
-    .select('candidate_id, rank, voter_name, voter_name_key')
-    .eq('ballot_id', ballot.id)
+  const { ballot, rounds, voteCount } = result.data
 
   return (
     <main className="min-h-screen flex flex-col items-center p-4 sm:p-8">
@@ -42,8 +29,8 @@ export default async function ResultsPage({ params }: { params: Promise<{ code: 
 
       <LiveResults
         ballot={ballot}
-        candidates={candidates ?? []}
-        initialVotes={votes ?? []}
+        initialRounds={rounds}
+        initialVoteCount={voteCount}
       />
     </main>
   )

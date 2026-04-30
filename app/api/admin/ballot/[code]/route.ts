@@ -3,6 +3,45 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ code: string }> }
+) {
+  const cookieStore = await cookies()
+  const adminSession = cookieStore.get(ADMIN_COOKIE)?.value
+
+  if (!verifyAdminSession(adminSession)) {
+    return NextResponse.json({ error: 'Admin session expired' }, { status: 401 })
+  }
+
+  const { code } = await params
+
+  const { data: ballot, error: ballotError } = await supabaseAdmin
+    .from('ballots')
+    .select('id, is_open')
+    .eq('share_code', code)
+    .single()
+
+  if (ballotError || !ballot) {
+    return NextResponse.json({ error: 'Ballot not found' }, { status: 404 })
+  }
+
+  const { data: votes, error: votesError } = await supabaseAdmin
+    .from('votes')
+    .select('candidate_id, rank, voter_name, voter_name_key')
+    .eq('ballot_id', ballot.id)
+
+  if (votesError) {
+    console.error('Admin votes lookup error:', votesError)
+    return NextResponse.json({ error: 'Failed to load votes' }, { status: 500 })
+  }
+
+  return NextResponse.json({
+    isOpen: ballot.is_open,
+    votes: votes ?? [],
+  })
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ code: string }> }

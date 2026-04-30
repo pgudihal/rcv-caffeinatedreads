@@ -1,90 +1,65 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { runRCV, RoundResult } from '@/lib/rcv'
-import { supabase } from '@/lib/supabase'
-import { voterNameKey } from '@/lib/voter-name'
+import { RoundResult } from '@/lib/rcv'
 import Results from '@/app/vote/[code]/Results'
 
 type Ballot = {
   id: string
+  share_code: string
   is_open: boolean
 }
 
-type Candidate = {
-  id: string
-  title: string
-}
-
-type Vote = {
-  candidate_id: string
-  rank: number
-  voter_name: string
-  voter_name_key?: string | null
+type PublicResultsResponse = {
+  ballot: Ballot
+  rounds: RoundResult[]
+  voteCount: number
 }
 
 export default function LiveResults({
   ballot,
-  candidates,
-  initialVotes,
+  initialRounds,
+  initialVoteCount,
   voterName,
 }: {
   ballot: Ballot
-  candidates: Candidate[]
-  initialVotes: Vote[]
+  initialRounds: RoundResult[]
+  initialVoteCount: number
   voterName?: string
 }) {
-  const [rounds, setRounds] = useState<RoundResult[]>(() => runRCV(initialVotes, candidates))
-  const [voteCount, setVoteCount] = useState(() => countVoters(initialVotes))
+  const [rounds, setRounds] = useState<RoundResult[]>(initialRounds)
+  const [voteCount, setVoteCount] = useState(initialVoteCount)
+  const [isClosed, setIsClosed] = useState(!ballot.is_open)
   const [resultsError, setResultsError] = useState('')
 
-  const updateResults = useCallback((votes: Vote[]) => {
-    setRounds(runRCV(votes, candidates))
-    setVoteCount(countVoters(votes))
-  }, [candidates])
-
   const refreshResults = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('votes')
-      .select('candidate_id, rank, voter_name, voter_name_key')
-      .eq('ballot_id', ballot.id)
+    const res = await fetch(`/api/results/${ballot.share_code}`, { cache: 'no-store' })
 
-    if (error) {
-      console.error('Results refresh error:', error)
+    if (!res.ok) {
       setResultsError('Could not refresh live results.')
       return
     }
 
+    const data = await res.json() as PublicResultsResponse
     setResultsError('')
-    updateResults(data ?? [])
-  }, [ballot.id, updateResults])
+    setRounds(data.rounds)
+    setVoteCount(data.voteCount)
+    setIsClosed(!data.ballot.is_open)
+  }, [ballot.share_code])
 
   useEffect(() => {
     const refreshTimer = window.setTimeout(() => {
       void refreshResults()
     }, 0)
-
-    const channel = supabase
-      .channel(`results-votes:${ballot.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'votes',
-          filter: `ballot_id=eq.${ballot.id}`,
-        },
-        () => {
-          void refreshResults()
-        }
-      )
-      .subscribe()
+    const refreshInterval = window.setInterval(() => {
+      void refreshResults()
+    }, 3000)
 
     return () => {
       window.clearTimeout(refreshTimer)
-      void supabase.removeChannel(channel)
+      window.clearInterval(refreshInterval)
     }
-  }, [ballot.id, refreshResults])
+  }, [refreshResults])
 
   return (
     <Results
@@ -92,11 +67,7 @@ export default function LiveResults({
       voterName={voterName}
       voteCount={voteCount}
       resultsError={resultsError}
-      isClosed={!ballot.is_open}
+      isClosed={isClosed}
     />
   )
-}
-
-function countVoters(votes: Vote[]) {
-  return new Set(votes.map(vote => vote.voter_name_key ?? voterNameKey(vote.voter_name))).size
 }

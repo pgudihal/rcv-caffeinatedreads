@@ -1,31 +1,20 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { getPublicResultsByCode } from '@/lib/public-results'
 import VoteClient from './VoteClient'
 
 export default async function VotePage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
+  const result = await getPublicResultsByCode(code)
 
-  const { data: ballot } = await supabase
-    .from('ballots')
-    .select('*')
-    .eq('share_code', code)
-    .single()
+  if (!result.data) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <p>{result.error}</p>
+      </main>
+    )
+  }
 
-  if (!ballot) return (
-    <main className="min-h-screen flex items-center justify-center">
-      <p>Ballot not found.</p>
-    </main>
-  )
-
-  const { data: candidates } = await supabase
-    .from('candidates')
-    .select('*')
-    .eq('ballot_id', ballot.id)
-
-  const { data: votes } = await supabase
-    .from('votes')
-    .select('candidate_id, rank, voter_name, voter_name_key')
-    .eq('ballot_id', ballot.id)
+  const { ballot, candidates, rounds, voteCount } = result.data
 
   return (
     <main className="min-h-screen flex flex-col items-center p-4 sm:p-8">
@@ -38,8 +27,9 @@ export default async function VotePage({ params }: { params: Promise<{ code: str
       <h1 className="text-3xl font-bold mb-2">{ballot.title}</h1>
       <VoteClient
         ballot={ballot}
-        candidates={candidates ?? []}
-        existingVotes={votes ?? []}
+        candidates={candidates}
+        initialRounds={rounds}
+        initialVoteCount={voteCount}
       />
     </main>
   )

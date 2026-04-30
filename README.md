@@ -9,7 +9,7 @@ A small ranked-choice voting app for a book club. Admins create ballots, share a
 - Create, close/reopen, and delete ballots
 - Public vote pages with drag-and-drop ranking
 - Public results-only pages
-- Live results via Supabase Realtime
+- Near-live results through server-side aggregate result polling
 - Deterministic random tie-breaks with visible tie-break notes
 - Individual vote deletion from the admin ballot page
 - Mobile-first layout for voting from phones
@@ -50,11 +50,10 @@ Run the migrations in Supabase SQL Editor:
 ```text
 supabase/migrations/20260430000000_initial_book_club_rcv.sql
 supabase/migrations/20260430001000_normalize_voter_names.sql
+supabase/migrations/20260430002000_remove_public_vote_reads.sql
 ```
 
-Also enable Realtime for the `votes` table in Supabase. The migration attempts to add `votes` to the `supabase_realtime` publication, but confirm it in the Supabase dashboard if live results do not update.
-
-The app intentionally has public read policies and no public write policies. Writes go through Next.js API routes using `SUPABASE_SECRET_KEY`.
+The app intentionally keeps raw vote rows private. Public pages get aggregate RCV rounds and voter counts from Next.js API routes using `SUPABASE_SECRET_KEY`; admin-only pages use protected API routes for raw vote management.
 
 ## Local Development
 
