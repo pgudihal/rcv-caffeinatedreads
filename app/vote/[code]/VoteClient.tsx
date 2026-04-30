@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   DndContext, closestCenter, KeyboardSensor,
   PointerSensor, useSensor, useSensors, DragEndEvent
@@ -11,10 +11,12 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { runRCV, RoundResult } from '@/lib/rcv'
+import { supabase } from '@/lib/supabase'
 import Results from './Results'
 
 type Candidate = { id: string; title: string }
 type Vote = { candidate_id: string; rank: number; voter_name: string }
+type VoteRow = Vote & { ballot_id: string }
 type Ballot = { id: string; title: string; is_open: boolean }
 
 function SortableBook({ candidate, index }: { candidate: Candidate; index: number }) {
@@ -48,11 +50,63 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
   const [submitting, setSubmitting] = useState(false)
   const [voteError, setVoteError] = useState('')
   const [rounds, setRounds] = useState<RoundResult[]>([])
+  const [voteCount, setVoteCount] = useState(0)
+  const [resultsError, setResultsError] = useState('')
 
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
+
+  const updateResults = useCallback((votes: Vote[]) => {
+    setRounds(runRCV(votes, candidates))
+    setVoteCount(new Set(votes.map(vote => vote.voter_name.toLowerCase())).size)
+  }, [candidates])
+
+  const refreshResults = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('votes')
+      .select('candidate_id, rank, voter_name')
+      .eq('ballot_id', ballot.id)
+
+    if (error) {
+      console.error('Results refresh error:', error)
+      setResultsError('Could not refresh live results.')
+      return
+    }
+
+    setResultsError('')
+    updateResults(data ?? [])
+  }, [ballot.id, updateResults])
+
+  useEffect(() => {
+    if (screen !== 'results') return
+
+    const refreshTimer = window.setTimeout(() => {
+      void refreshResults()
+    }, 0)
+
+    const channel = supabase
+      .channel(`votes:${ballot.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'votes',
+          filter: `ballot_id=eq.${ballot.id}`,
+        },
+        () => {
+          void refreshResults()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      window.clearTimeout(refreshTimer)
+      void supabase.removeChannel(channel)
+    }
+  }, [ballot.id, refreshResults, screen])
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -81,7 +135,7 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
     setSubmitting(true)
     setVoteError('')
 
-    const rankings = items.map((item, index) => ({
+    const rankings: VoteRow[] = items.map((item, index) => ({
       ballot_id: ballot.id,
       candidate_id: item.id,
       rank: index + 1,
@@ -101,10 +155,8 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
       return
     }
 
-    // Run RCV on all votes including this one
     const allVotes = [...existingVotes, ...rankings]
-    const results = runRCV(allVotes, candidates)
-    setRounds(results)
+    updateResults(allVotes)
     setScreen('results')
     setSubmitting(false)
   }
@@ -142,7 +194,14 @@ export default function VoteClient({ ballot, candidates, existingVotes }: {
 
   // Results screen
   if (screen === 'results') {
-    return <Results rounds={rounds} voterName={voterName} />
+    return (
+      <Results
+        rounds={rounds}
+        voterName={voterName}
+        voteCount={voteCount}
+        resultsError={resultsError}
+      />
+    )
   }
 
   // Voting screen

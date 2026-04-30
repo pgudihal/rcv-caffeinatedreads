@@ -5,9 +5,16 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+type Ballot = {
+  id: string
+  title: string
+  share_code: string
+  is_open: boolean
+}
+
 export default function Home() {
   const router = useRouter()
-  const [ballots, setBallots] = useState<any[]>([])
+  const [ballots, setBallots] = useState<Ballot[]>([])
   const [showModal, setShowModal] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -35,7 +42,6 @@ async function handlePasswordSubmit() {
     return
   }
 
-  sessionStorage.setItem('adminPassword', password)
   router.push('/create')
 }
 

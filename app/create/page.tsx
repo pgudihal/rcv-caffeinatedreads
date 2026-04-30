@@ -29,18 +29,12 @@ export default function CreatePage() {
     if (!title.trim()) return setError('Ballot title is required')
     if (filledBooks.length < 2) return setError('At least 2 books are required')
 
-    const password = sessionStorage.getItem('adminPassword')
-    if (!password) {
-      router.push('/')
-      return
-    }
-
     setSubmitting(true)
 
     const res = await fetch('/api/create-ballot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password, title, candidates: filledBooks })
+      body: JSON.stringify({ title, candidates: filledBooks })
     })
 
     const data = await res.json()
@@ -51,7 +45,6 @@ export default function CreatePage() {
       return
     }
 
-    sessionStorage.removeItem('adminPassword')
     router.push(`/vote/${data.shareCode}`)
   }
 

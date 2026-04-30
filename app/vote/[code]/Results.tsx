@@ -1,6 +1,16 @@
 import { RoundResult } from '@/lib/rcv'
 
-export default function Results({ rounds, voterName }: { rounds: RoundResult[], voterName: string }) {
+export default function Results({
+  rounds,
+  voterName,
+  voteCount,
+  resultsError,
+}: {
+  rounds: RoundResult[]
+  voterName: string
+  voteCount: number
+  resultsError: string
+}) {
   const winner = rounds.at(-1)?.winner
 
   return (
@@ -8,8 +18,13 @@ export default function Results({ rounds, voterName }: { rounds: RoundResult[], 
       <div className="text-center mb-8">
         <p className="text-4xl mb-3">🎉</p>
         <p className="text-sm mb-1" style={{ color: 'var(--muted)' }}>Thanks for voting, {voterName}!</p>
-        <h2 className="text-2xl font-bold">Winner: {winner}</h2>
+        <h2 className="text-2xl font-bold">Winner: {winner ?? 'Waiting for votes'}</h2>
+        <p className="text-sm mt-2" style={{ color: 'var(--muted)' }}>
+          Live results from {voteCount} voter{voteCount !== 1 ? 's' : ''}
+        </p>
       </div>
+
+      {resultsError && <p className="text-red-400 mb-4 text-sm">{resultsError}</p>}
 
       <h3 className="font-semibold mb-4" style={{ color: 'var(--muted)' }}>Round by round</h3>
 
@@ -52,7 +67,7 @@ export default function Results({ rounds, voterName }: { rounds: RoundResult[], 
             })}
           {round.eliminated && (
             <p className="text-xs mt-3" style={{ color: 'var(--muted)' }}>
-              "{round.eliminated}" was eliminated this round
+              <span>{round.eliminated}</span> was eliminated this round
             </p>
           )}
         </div>
