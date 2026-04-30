@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Caffeinated Reads RCV
 
-## Getting Started
+A small ranked-choice voting app for a book club. Admins create ballots, share a public vote link, and members rank books. Results update live after voting.
 
-First, run the development server:
+## Features
+
+- Admin password flow with short-lived signed cookie sessions
+- Admin dashboard for managing ballots
+- Create, close/reopen, and delete ballots
+- Public vote pages with drag-and-drop ranking
+- Public results-only pages
+- Live results via Supabase Realtime
+- Deterministic random tie-breaks with visible tie-break notes
+- Individual vote deletion from the admin ballot page
+- Mobile-first layout for voting from phones
+
+## Stack
+
+- Next.js App Router
+- React
+- TypeScript
+- Tailwind CSS
+- Supabase Postgres + Realtime
+- Vercel deployment
+
+## Environment
+
+Create `.env.local` for local development:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+SUPABASE_SECRET_KEY=your_supabase_secret_key
+ADMIN_PASSWORD=your_admin_password
+ADMIN_SESSION_SECRET=generated_secret
+```
+
+Generate `ADMIN_SESSION_SECRET` with:
+
+```bash
+openssl rand -hex 32
+```
+
+`ADMIN_SESSION_SECRET` is optional because the app falls back to `ADMIN_PASSWORD`, but a separate secret is recommended before sharing the app.
+
+## Supabase Setup
+
+Run the migrations in Supabase SQL Editor:
+
+```text
+supabase/migrations/20260430000000_initial_book_club_rcv.sql
+supabase/migrations/20260430001000_normalize_voter_names.sql
+```
+
+Also enable Realtime for the `votes` table in Supabase. The migration attempts to add `votes` to the `supabase_realtime` publication, but confirm it in the Supabase dashboard if live results do not update.
+
+The app intentionally has public read policies and no public write policies. Writes go through Next.js API routes using `SUPABASE_SECRET_KEY`.
+
+## Local Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project uses Next.js 16, which requires Node.js `>=20.9.0`.
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run dev      # start local dev server
+npm run lint     # run ESLint
+npm test         # run RCV unit tests
+npx tsc --noEmit # type-check the app
+npm run build    # production build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## App Routes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `/` - public home page and admin login entry
+- `/admin` - protected admin dashboard
+- `/admin/ballot/:code` - protected ballot management page
+- `/create` - protected ballot creation page
+- `/vote/:code` - public voting page
+- `/results/:code` - public live results page
 
-## Deploy on Vercel
+## Deployment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Vercel works well for free hosting.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push the repo to GitHub.
+2. Import the repo in Vercel.
+3. Add the environment variables listed above.
+4. Deploy.
+
+Vercel provides a free public URL like:
+
+```text
+https://your-project.vercel.app
+```
+
+After deployment, test:
+
+- Admin login
+- Create ballot
+- Public vote link
+- Public results link
+- Live result updates from another browser/session
+- Close/reopen ballot
+- Delete test ballot
+
+## Notes
+
+- The database table is named `candidates`, but the UI calls them books.
+- One voter creates multiple `votes` rows, one per ranked book.
+- Duplicate voters are detected with normalized `voter_name_key`.
+- Tie-breaks are deterministic: the app makes a stable random-like choice and displays it in the results.
