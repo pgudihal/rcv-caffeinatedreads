@@ -42,11 +42,14 @@ export default function AdminBallotClient({
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [rounds, setRounds] = useState<RoundResult[]>(() => runRCV(initialVotes, candidates))
   const [voteCount, setVoteCount] = useState(() => countVoters(initialVotes))
+  const [votes, setVotes] = useState(initialVotes)
   const [resultsError, setResultsError] = useState('')
   const [copied, setCopied] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [deletingVoteKey, setDeletingVoteKey] = useState<string | null>(null)
+  const [voteDeleteError, setVoteDeleteError] = useState('')
 
   const votePath = `/vote/${ballot.share_code}`
   const resultsPath = `/results/${ballot.share_code}`
@@ -56,6 +59,7 @@ export default function AdminBallotClient({
   }, [votePath])
 
   const updateResults = useCallback((votes: Vote[]) => {
+    setVotes(votes)
     setRounds(runRCV(votes, candidates))
     setVoteCount(countVoters(votes))
   }, [candidates])
@@ -149,6 +153,27 @@ export default function AdminBallotClient({
     router.push('/admin')
   }
 
+  async function deleteVote(voterKey: string) {
+    setVoteDeleteError('')
+    setDeletingVoteKey(voterKey)
+
+    const res = await fetch(`/api/admin/ballot/${ballot.share_code}/vote/${encodeURIComponent(voterKey)}`, {
+      method: 'DELETE',
+    })
+
+    if (!res.ok) {
+      const data = await res.json()
+      setVoteDeleteError(data.error || 'Could not delete vote.')
+      setDeletingVoteKey(null)
+      return
+    }
+
+    await refreshResults()
+    setDeletingVoteKey(null)
+  }
+
+  const submittedVotes = getSubmittedVotes(votes)
+
   return (
     <div className="w-full max-w-2xl">
       <Link href="/admin" className="inline-block text-sm mb-6" style={{ color: 'var(--muted)' }}>
@@ -218,6 +243,44 @@ export default function AdminBallotClient({
         />
       </section>
 
+      <section className="mt-10">
+        <h2 className="font-semibold mb-3">Submitted Votes</h2>
+        {submittedVotes.length === 0 ? (
+          <div
+            className="rounded-lg p-4 text-sm"
+            style={{ background: 'var(--card-background)', border: '1px solid var(--card-border)', color: 'var(--muted)' }}
+          >
+            No votes have been submitted yet.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {submittedVotes.map(vote => (
+              <div
+                key={vote.key}
+                className="flex flex-col gap-3 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between"
+                style={{ background: 'var(--card-background)', border: '1px solid var(--card-border)' }}
+              >
+                <div>
+                  <p className="font-semibold">{vote.name}</p>
+                  <p className="text-sm" style={{ color: 'var(--muted)' }}>
+                    {vote.rankCount} ranked book{vote.rankCount !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => deleteVote(vote.key)}
+                  disabled={deletingVoteKey === vote.key}
+                  className="px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+                  style={{ border: '1px solid #ef4444', color: '#ef4444' }}
+                >
+                  {deletingVoteKey === vote.key ? 'Deleting...' : 'Delete Vote'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {voteDeleteError && <p className="text-red-400 mt-3 text-sm">{voteDeleteError}</p>}
+      </section>
+
       <section className="mt-10 pt-6" style={{ borderTop: '1px solid var(--card-border)' }}>
         <h2 className="font-semibold mb-2">Danger Zone</h2>
         <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>
@@ -272,4 +335,25 @@ export default function AdminBallotClient({
 
 function countVoters(votes: Vote[]) {
   return new Set(votes.map(vote => vote.voter_name_key ?? voterNameKey(vote.voter_name))).size
+}
+
+function getSubmittedVotes(votes: Vote[]) {
+  const votesByVoter = new Map<string, { key: string; name: string; rankCount: number }>()
+
+  for (const vote of votes) {
+    const key = vote.voter_name_key ?? voterNameKey(vote.voter_name)
+    const existing = votesByVoter.get(key)
+
+    if (existing) {
+      existing.rankCount += 1
+    } else {
+      votesByVoter.set(key, {
+        key,
+        name: vote.voter_name,
+        rankCount: 1,
+      })
+    }
+  }
+
+  return [...votesByVoter.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
